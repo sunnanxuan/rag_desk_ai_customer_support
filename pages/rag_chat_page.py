@@ -8,7 +8,7 @@ import streamlit as st
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, MessagesState
-from langchain_core.messages import AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessageChunk, ToolMessage, SystemMessage
 
 from utils import (
     PLATFORMS,
@@ -32,6 +32,12 @@ if not st.session_state.get("_page_title_set"):
 # 常量
 # -----------------------------
 RAG_PAGE_INTRODCCTION = "你好，我是智能客服助手，请问有什么可以帮助你的吗？"
+
+RAG_ROUTING_SYSTEM_PROMPT = (
+    "当有检索工具可用时，必须先调用检索工具，仅依据命中内容作答；"
+    "若工具无命中（返回空），再以专业客服口吻给出通用、稳妥建议。"
+    "不编造内部数据/价格/时效；不确定处需说明并给出下一步。"
+)
 
 # -----------------------------
 # 小工具（JSON / 头像 / KB 列表 / 顶部模型配置）
@@ -123,7 +129,8 @@ def get_rag_graph(platform, model, temperature, selected_kbs, KBS):
     def call_model(state):
         llm = get_chatllm(platform, model, temperature=temperature)
         llm_with_tools = llm.bind_tools(tools) if tools else llm
-        return {"messages": [llm_with_tools.invoke(state["messages"])]}
+        msgs = [SystemMessage(content=RAG_ROUTING_SYSTEM_PROMPT), *state["messages"]]
+        return {"messages": [llm_with_tools.invoke(msgs)]}
 
     workflow = StateGraph(MessagesState)
     workflow.add_node("agent", call_model)
