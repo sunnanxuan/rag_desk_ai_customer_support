@@ -251,7 +251,7 @@ def rag_chat_page():
     with top_bar:
         left, mid, right = st.columns([6, 4, 2], vertical_alignment="center")
         with left:
-            st.markdown("### 智能客服")
+            st.markdown("### RAG Desk · AI Customer Support")
         with mid:
             # 动态显示当前配置的弹出按钮
             with st.popover(_cfg_label(), use_container_width=True, help="配置当前对话使用的模型"):
