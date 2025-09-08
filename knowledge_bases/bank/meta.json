@@ -1,0 +1,18 @@
+{
+  "kb_name": "bank",
+  "description": "银行相关知识库",
+  "created_at": "2025-09-08T11:22:03",
+  "files": [
+    "bank.txt"
+  ],
+  "num_files": 1,
+  "num_chunks": 6,
+  "chunk_size": 1200,
+  "chunk_overlap": 200,
+  "embedding_backend": "OpenAI",
+  "embedding_model": "text-embedding-3-small",
+  "ollama_base_url": null,
+  "xinference_server_url": null,
+  "xinference_model_uid": null,
+  "persist_directory": "knowledge_bases/bank/chroma"
+}
