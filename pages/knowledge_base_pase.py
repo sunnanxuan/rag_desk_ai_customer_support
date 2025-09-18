@@ -22,6 +22,9 @@ if not st.session_state.get("_page_title_set"):
 
 
 
+
+
+
 KB_ROOT = Path("kb")
 
 PRESET_OPENAI_EMBED_MODELS = [
@@ -68,17 +71,7 @@ def _build_chroma(texts, metas, persist_dir: Path, embeddings):
     )
     return vs
 
-def _list_existing_kbs():
-    # 优先用 utils.get_kb_names（与现有项目保持一致）
-    try:
-        names = get_kb_names()
-        if isinstance(names, (list, tuple)) and names:
-            return sorted(set(_slugify(n) for n in names))
-    except Exception:
-        pass
-    if KB_ROOT.exists():
-        return sorted([p.name for p in KB_ROOT.iterdir() if p.is_dir()])
-    return []
+
 
 
 def _load_meta(kb_dir: Path) -> dict:
@@ -98,6 +91,12 @@ def _save_meta(kb_dir: Path, meta: dict):
 def knowledge_base_page():
     st.title("行业知识库")
     st.caption("上传文档，构建向量库，用于对话检索（RAG）")
+
+    if st.session_state.get("__kb_deleted_msg"):
+        st.success(st.session_state["__kb_deleted_msg"])
+        st.toast(st.session_state["__kb_deleted_msg"], icon="🗑️")  # 可选
+        del st.session_state["__kb_deleted_msg"]  # 读一次就移除，避免重复显示
+
 
     _ensure_dirs(KB_ROOT)
     st.subheader("① 创建新的知识库")
@@ -206,21 +205,26 @@ def knowledge_base_page():
 
     # --- ② 管理已有知识库 ---
     st.subheader("② 管理已有知识库")
-    existing = _list_existing_kbs()
-    if not existing:
+    existing_labels = list_all_kbs()  # list[str]
+
+    # 构建“显示名 -> slug”的映射；内部磁盘/向量库一律用 slug
+    label_to_slug = {lbl: _slugify(lbl) for lbl in existing_labels}
+    sorted_labels = sorted(label_to_slug.keys())
+
+    if not sorted_labels:
         st.info("当前没有已存在的知识库。")
         return
 
     col_a, col_b = st.columns([2, 1], vertical_alignment="center")
     with col_a:
-        kb_selected = st.selectbox("选择一个知识库", existing)
+        kb_label_selected = st.selectbox("选择一个知识库", sorted_labels)
     with col_b:
         show_meta = st.toggle("显示元信息", value=True)
 
-    kb_dir = KB_ROOT / kb_selected
+    kb_slug = label_to_slug[kb_label_selected]
+    kb_dir = KB_ROOT / kb_slug
     meta = _load_meta(kb_dir)
 
-    # 元信息展示（包含固定的 chunk 配置，仅信息用途）
     if show_meta:
         st.caption("知识库信息")
         if meta:
@@ -228,9 +232,9 @@ def knowledge_base_page():
         else:
             st.write("未找到 meta.json。")
 
-    # 在线编辑“描述”
+        # 在线编辑“描述”
     st.markdown("**编辑描述**")
-    new_desc = st.text_area("知识库描述", value=meta.get("description", ""), height=80, key=f"desc_{kb_selected}")
+    new_desc = st.text_area("知识库描述", value=meta.get("description", ""), height=80, key=f"desc_{kb_slug}")
     if st.button("保存描述", use_container_width=False):
         meta["description"] = new_desc.strip()
         meta["updated_at"] = datetime.now().isoformat(timespec="seconds")
@@ -285,9 +289,10 @@ def knowledge_base_page():
         if st.button("删除知识库", type="secondary", use_container_width=True):
             try:
                 shutil.rmtree(kb_dir)
-                st.success(f"已删除知识库：{kb_selected}")
-                st.toast("删除成功", icon="🗑️")
-                st.experimental_rerun()
+                # 把要显示的成功信息写入 session_state
+                st.session_state["__kb_deleted_msg"] = f"已删除知识库：{kb_label_selected}"
+                # 立刻刷新，这样列表会更新，同时下一次渲染会显示上面的成功提示
+                st.rerun()
             except Exception as e:
                 st.error(f"删除失败：{e}")
 
