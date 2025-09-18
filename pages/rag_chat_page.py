@@ -28,31 +28,6 @@ if not st.session_state.get("_page_title_set"):
 
 
 
-def _list_all_kbs():
-    names = set()
-
-    # 来源 1
-    try:
-        for n in get_kb_names() or []:
-            if n and isinstance(n, str):
-                names.add(n.strip())
-    except Exception:
-        pass
-
-    # 来源 2
-    try:
-        kb_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge_bases")
-        if os.path.isdir(kb_root):
-            for entry in sorted(os.listdir(kb_root)):
-                p = os.path.join(kb_root, entry)
-                if os.path.isdir(p):
-                    names.add(entry.strip())
-    except Exception:
-        pass
-
-    return sorted(n for n in names if n)
-
-# —— 顶部模型配置：默认值与动态标签 ——
 def _init_cfg_defaults():
     if "cfg_platform" not in st.session_state:
         st.session_state["cfg_platform"] = PLATFORMS[0]
@@ -64,12 +39,17 @@ def _init_cfg_defaults():
     if "cfg_hist_len" not in st.session_state:
         st.session_state["cfg_hist_len"] = 5
 
+
+
+
 def _cfg_label() -> str:
     p = st.session_state.get("cfg_platform", "")
     m = st.session_state.get("cfg_model", "")
     t = st.session_state.get("cfg_temp", 0.3)
     h = st.session_state.get("cfg_hist_len", 5)
     return f"{m}"
+
+
 
 
 def get_rag_graph(platform, model, temperature, selected_kbs, KBS):
@@ -94,6 +74,8 @@ def get_rag_graph(platform, model, temperature, selected_kbs, KBS):
     app = workflow.compile(checkpointer=checkpointer)
     return app
 
+
+
 def graph_response(graph, input_messages):
     """把 LangGraph 的流式消息转成 Streamlit 可写入的生成器"""
     for event in graph.invoke(
@@ -116,7 +98,6 @@ def graph_response(graph, input_messages):
                 )
             yield msg.content
 
-        # 工具返回（知识库检索结果）
         elif isinstance(msg, ToolMessage):
             status_placeholder = st.empty()
             with status_placeholder.status("正在查询……", expanded=True) as s:
@@ -145,20 +126,21 @@ def graph_response(graph, input_messages):
                     }
                 )
 
+
+
 def get_rag_chat_response(platform, model, temperature, input_messages, selected_kbs, KBS):
     app = get_rag_graph(platform, model, temperature, selected_kbs, KBS)
     return graph_response(graph=app, input_messages=input_messages)
 
-# -----------------------------
-# UI：历史记录/清空
-# -----------------------------
+
+
+
 def display_chat_history():
     for message in st.session_state["rag_chat_history_with_too_call"]:
         with st.chat_message(
             message["role"],
             avatar=get_img_base64("img/small_logo.png") if message["role"] == "assistant" else None,
         ):
-            # 展示工具检索状态（如果有）
             if "tool_calls" in message:
                 for tool_call in message["tool_calls"]:
                     with st.status(tool_call.get("status", "查询中"), expanded=False):
@@ -173,6 +155,8 @@ def display_chat_history():
                             )
             st.write(message.get("content", ""))
 
+
+
 def clear_chat_history():
     st.session_state["rag_chat_history"] = [
         {"role": "assistant", "content": RAG_PAGE_INTRODCCTION}
@@ -182,12 +166,13 @@ def clear_chat_history():
     ]
     st.session_state["rag_tool_calls"] = []
 
-# -----------------------------
-# 页面主体
-# -----------------------------
+
+
+
 def rag_chat_page():
     # --- 构建可用的知识库工具 ---
-    kbs = _list_all_kbs()
+    kbs = list_all_kbs()
+    st.write("KB names from utils.get_kb_names():", kbs)
     KBS = {k: get_naive_rag_tool(k) for k in kbs}
 
     # --- 初始化会话状态 ---
@@ -291,6 +276,8 @@ def rag_chat_page():
         st.session_state["rag_chat_history"].append({"role": "assistant", "content": assistant_text})
         st.session_state["rag_chat_history_with_too_call"].append({"role": "assistant", "content": assistant_text})
 
-# 仅当作为“页面脚本”运行时才渲染
+
+
+
 if __name__ == "__main__":
     rag_chat_page()

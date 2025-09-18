@@ -1,0 +1,15 @@
+{
+  "kb_name": "wang",
+  "description": "",
+  "created_at": "2025-09-18T09:32:38",
+  "files": [
+    "小窦往.txt"
+  ],
+  "num_files": 1,
+  "num_chunks": 1,
+  "chunk_size": 1200,
+  "chunk_overlap": 200,
+  "embedding_backend": "OpenAI",
+  "embedding_model": "text-embedding-3-small",
+  "persist_directory": "kb/wang/vectorstore"
+}

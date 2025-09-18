@@ -5,7 +5,7 @@ load_dotenv()
 import os
 from langchain_chroma import Chroma
 from langchain_core.tools import create_retriever_tool
-from utils import get_embedding_model
+from utils import *
 
 
 

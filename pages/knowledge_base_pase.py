@@ -4,10 +4,13 @@ load_dotenv()
 import os
 import json
 import shutil
-from pathlib import Path
 from datetime import datetime
 import streamlit as st
-from utils import get_kb_names
+from utils import *
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+import re
+from langchain_openai import OpenAIEmbeddings
+from langchain_chroma import Chroma
 
 
 if not st.session_state.get("_page_title_set"):
@@ -18,14 +21,13 @@ if not st.session_state.get("_page_title_set"):
     )
     st.session_state["_page_title_set"] = True
 
-# ========= 固定的后端参数（不在网页显示）=========
+
+
 DEFAULT_CHUNK_SIZE = 1200
 DEFAULT_CHUNK_OVERLAP = 200
 
-# ========= 知识库根目录，可按需修改 =========
-KB_ROOT = Path("knowledge_bases")
+KB_ROOT = Path("kb")
 
-# ========= 预设的 OpenAI Embedding 模型 =========
 PRESET_OPENAI_EMBED_MODELS = [
     ("text-embedding-3-small · 1536 维（默认）", "text-embedding-3-small"),
     ("text-embedding-3-large · 3072 维（更高质量）", "text-embedding-3-large"),
@@ -36,7 +38,6 @@ PRESET_OPENAI_EMBED_MODELS = [
 
 # =============== 基础工具函数 ===============
 def _slugify(name: str) -> str:
-    import re
     s = name.strip().lower()
     s = re.sub(r"[^\w\-]+", "-", s)
     s = re.sub(r"-{2,}", "-", s).strip("-")
@@ -55,57 +56,9 @@ def _save_uploaded_files(files, dest_dir: Path):
         saved_paths.append(out)
     return saved_paths
 
-def _load_texts(paths):
-    """
-    读取文件为纯文本；支持 .txt, .md, .pdf, .docx
-    """
-    docs, metas = [], []
-    for p in paths:
-        p = Path(p)
-        ext = p.suffix.lower()
-        text = ""
 
-        try:
-            if ext in [".txt", ".md"]:
-                text = p.read_text(encoding="utf-8", errors="ignore")
-
-            elif ext == ".pdf":
-                try:
-                    from pypdf import PdfReader  # pip install pypdf
-                except Exception as e:
-                    raise RuntimeError("缺少依赖 pypdf，请先安装：pip install pypdf") from e
-                reader = PdfReader(str(p))
-                text = "\n".join(page.extract_text() or "" for page in reader.pages)
-
-            elif ext == ".docx":
-                try:
-                    import docx  # pip install python-docx
-                except Exception as e:
-                    raise RuntimeError("缺少依赖 python-docx，请先安装：pip install python-docx") from e
-                d = docx.Document(str(p))
-                text = "\n".join(par.text for par in d.paragraphs)
-
-            else:
-                # 其他格式可按需扩展
-                continue
-
-        except Exception as e:
-            st.warning(f"读取文件失败：{p.name}，原因：{e}")
-            continue
-
-        if text and text.strip():
-            docs.append(text)
-            metas.append({"source": str(p), "filename": p.name, "ext": ext})
-    return docs, metas
 
 def _split_texts(texts, metas, chunk_size=DEFAULT_CHUNK_SIZE, chunk_overlap=DEFAULT_CHUNK_OVERLAP):
-    try:
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-    except Exception as e:
-        raise RuntimeError(
-            "缺少 langchain-text-splitters，请安装：pip install langchain-text-splitters"
-        ) from e
-
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=int(chunk_size),
         chunk_overlap=int(chunk_overlap),
@@ -119,22 +72,9 @@ def _split_texts(texts, metas, chunk_size=DEFAULT_CHUNK_SIZE, chunk_overlap=DEFA
     return chunk_texts, chunk_metas
 
 def _get_embeddings_openai(model_name: str):
-    try:
-        from langchain_openai import OpenAIEmbeddings
-    except Exception as e:
-        raise RuntimeError("缺少 langchain-openai，请安装：pip install langchain-openai") from e
-    if not os.getenv("OPENAI_API_KEY"):
-        st.warning("未检测到 OPENAI_API_KEY 环境变量，后续可能报 401。请在 .env 或系统环境中设置。")
     return OpenAIEmbeddings(model=model_name)
 
 def _build_chroma(texts, metas, persist_dir: Path, embeddings):
-    try:
-        from langchain_community.vectorstores import Chroma
-    except Exception as e:
-        raise RuntimeError(
-            "缺少 chroma 依赖，请安装：pip install chromadb langchain-community"
-        ) from e
-
     _ensure_dirs(persist_dir)
     vs = Chroma.from_texts(
         texts=texts,
@@ -223,7 +163,8 @@ def knowledge_base_page():
 
         kb_dir = KB_ROOT / kb_name
         src_dir = kb_dir / "source"
-        chroma_dir = kb_dir / "chroma"
+        # chroma_dir = kb_dir / "chroma"                        # (旧)
+        vectorstore_dir = kb_dir / "vectorstore"                 # [CHANGED]
 
         if kb_dir.exists():
             st.warning(f"知识库“{kb_name}”已存在，将覆盖其向量库（原始文件保留）。")
@@ -235,7 +176,7 @@ def knowledge_base_page():
             s.update(label=f"已保存 {len(saved_paths)} 个文件", expanded=False)
 
         with st.status("正在读取与切分文档…", expanded=False) as s:
-            texts, metas = _load_texts(saved_paths)
+            texts, metas = load_texts(saved_paths)
             if not texts:
                 s.update(label="未能从文件中读取到文本内容。", state="error")
                 st.stop()
@@ -254,7 +195,7 @@ def knowledge_base_page():
                 s.update(label=f"创建 Embeddings 失败：{e}", state="error")
                 st.stop()
             try:
-                _build_chroma(chunk_texts, chunk_metas, chroma_dir, embeddings)
+                _build_chroma(chunk_texts, chunk_metas, vectorstore_dir, embeddings)   # [CHANGED]
             except Exception as e:
                 s.update(label=f"构建 Chroma 失败：{e}", state="error")
                 st.stop()
@@ -272,7 +213,7 @@ def knowledge_base_page():
             "chunk_overlap": int(DEFAULT_CHUNK_OVERLAP),
             "embedding_backend": "OpenAI",
             "embedding_model": model_name,
-            "persist_directory": str(chroma_dir),
+            "persist_directory": str(vectorstore_dir),            # [CHANGED]
         }
         _save_meta(kb_dir, meta)
 
@@ -321,12 +262,13 @@ def knowledge_base_page():
     with c1:
         if st.button("重建向量库", use_container_width=True):
             src_dir = kb_dir / "source"
-            chroma_dir = kb_dir / "chroma"
+            # chroma_dir = kb_dir / "chroma"                    # (旧)
+            vectorstore_dir = kb_dir / "vectorstore"             # [CHANGED]
             if not src_dir.exists() or not any(src_dir.iterdir()):
                 st.error("没有找到原始文件（source/）。无法重建。")
             else:
                 with st.status("正在重建向量库…", expanded=False) as s:
-                    texts, metas = _load_texts([p for p in src_dir.iterdir() if p.is_file()])
+                    texts, metas = load_texts([p for p in src_dir.iterdir() if p.is_file()])
                     if not texts:
                         s.update(label="原始文件中没有可读取的文本内容。", state="error")
                         st.stop()
@@ -342,9 +284,9 @@ def knowledge_base_page():
 
                     try:
                         embeddings = _get_embeddings_openai(model_name_saved)
-                        if chroma_dir.exists():
-                            shutil.rmtree(chroma_dir)
-                        _build_chroma(chunk_texts, chunk_metas, chroma_dir, embeddings)
+                        if vectorstore_dir.exists():               # [CHANGED]
+                            shutil.rmtree(vectorstore_dir)         # [CHANGED]
+                        _build_chroma(chunk_texts, chunk_metas, vectorstore_dir, embeddings)  # [CHANGED]
                     except Exception as e:
                         s.update(label=f"重建失败：{e}", state="error")
                         st.stop()
@@ -354,7 +296,7 @@ def knowledge_base_page():
                 meta.update({
                     "num_chunks": len(chunk_texts),
                     "updated_at": datetime.now().isoformat(timespec="seconds"),
-                    "persist_directory": str(chroma_dir),
+                    "persist_directory": str(vectorstore_dir),    # [CHANGED]
                     # 确保 meta 中反映固定参数
                     "chunk_size": int(DEFAULT_CHUNK_SIZE),
                     "chunk_overlap": int(DEFAULT_CHUNK_OVERLAP),

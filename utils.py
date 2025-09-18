@@ -4,7 +4,10 @@ load_dotenv()
 import os,base64
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from config import *
-
+from pypdf import PdfReader
+import docx
+from pathlib import Path
+from typing import Iterable, Callable, Tuple, List, Dict, Optional
 
 
 
@@ -36,7 +39,7 @@ def get_chatllm(platform: str, model: str, temperature: float = 0.3):
 
 
 def get_kb_names() -> List[str]:
-    root = os.path.dirname(os.path.dirname(__file__))
+    root = os.path.dirname(__file__)
     kb_root = os.path.join(root, "kb")
     names: List[str] = []
     if os.path.isdir(kb_root):
@@ -51,3 +54,62 @@ def get_embedding_model(platform_type: str = "OpenAI"):
     if platform_type == "OpenAI":
         return OpenAIEmbeddings(model="text-embedding-3-small")
     raise ValueError(f"Unsupported platform_type: {platform_type}")
+
+
+
+from functools import lru_cache
+
+def list_all_kbs() -> list[str]:
+    try:
+        return sorted({
+            n.strip()
+            for n in (get_kb_names() or [])
+            if isinstance(n, str) and n.strip()
+        })
+    except Exception:
+        return []
+
+
+
+def load_texts(paths: Iterable[str | Path],warn: Optional[Callable[[str], None]] = None,) -> Tuple[List[str], List[Dict]]:
+    def _warn(msg: str):
+        if warn:
+            warn(msg)
+
+    docs: List[str] = []
+    metas: List[Dict] = []
+
+    for p in paths:
+        p = Path(p)
+        ext = p.suffix.lower()
+        text = ""
+
+        try:
+            if ext in (".txt", ".md"):
+                text = p.read_text(encoding="utf-8", errors="ignore")
+
+            elif ext == ".pdf":
+                if PdfReader is None:
+                    raise RuntimeError("缺少依赖 pypdf，请先安装：pip install pypdf")
+                reader = PdfReader(str(p))
+                text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+            elif ext == ".docx":
+                if docx is None:
+                    raise RuntimeError("缺少依赖 python-docx，请先安装：pip install python-docx")
+                d = docx.Document(str(p))
+                text = "\n".join(par.text for par in d.paragraphs)
+
+            else:
+                # 非支持类型：直接跳过
+                continue
+
+        except Exception as e:
+            _warn(f"读取文件失败：{p.name}，原因：{e}")
+            continue
+
+        if text and text.strip():
+            docs.append(text)
+            metas.append({"source": str(p), "filename": p.name, "ext": ext})
+
+    return docs, metas
