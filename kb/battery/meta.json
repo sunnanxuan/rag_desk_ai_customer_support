@@ -1,0 +1,15 @@
+{
+  "kb_name": "battery",
+  "description": "",
+  "created_at": "2025-09-18T10:20:26",
+  "files": [
+    "battery.txt"
+  ],
+  "num_files": 1,
+  "num_chunks": 4,
+  "chunk_size": "1200",
+  "chunk_overlap": "200",
+  "embedding_backend": "OpenAI",
+  "embedding_model": "text-embedding-3-small",
+  "persist_directory": "kb/battery/vectorstore"
+}

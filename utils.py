@@ -1,15 +1,16 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-import os,base64
+import os
+import base64
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from config import *
 from pypdf import PdfReader
 import docx
 from pathlib import Path
 from typing import Iterable, Callable, Tuple, List, Dict, Optional
-import os
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+import re
 
 
 
@@ -120,6 +121,17 @@ def load_texts(paths: Iterable[str | Path],warn: Optional[Callable[[str], None]]
 
 
 
+def save_uploaded_files(files, dest_dir: Path):
+    saved_paths = []
+    for f in files:
+        filename = Path(f.name).name  # 只取文件名，去掉可能的路径段
+        out = dest_dir / filename
+        with open(out, "wb") as w:
+            w.write(f.read())
+        saved_paths.append(out)
+    return saved_paths
+
+
 
 
 def split_texts(texts, metas):
@@ -134,3 +146,14 @@ def split_texts(texts, metas):
         chunk_texts.extend(chunks)
         chunk_metas.extend([m] * len(chunks))
     return chunk_texts, chunk_metas
+
+
+
+
+
+
+def slugify(name: str) -> str:
+    s = name.strip().lower()
+    s = re.sub(r"[^\w\-]+", "-", s)
+    s = re.sub(r"-{2,}", "-", s).strip("-")
+    return s or "kb"
