@@ -1,25 +1,21 @@
-# pages/rag_chat_page.py
 from dotenv import load_dotenv
 load_dotenv()
 
-import os
+
 import json
 import streamlit as st
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, MessagesState
 from langchain_core.messages import AIMessageChunk, ToolMessage, SystemMessage
-
-from utils import (
-    PLATFORMS,
-    get_img_base64,
-    get_llm_models,
-    get_chatllm,
-    get_kb_names,
-)
+from utils import *
 from tools.naive_rag_tool import get_naive_rag_tool
+from prompts import *
+from config import *
 
-import streamlit as st
+
+
+
 if not st.session_state.get("_page_title_set"):
     st.set_page_config(
         page_title="RAG Desk · AI Customer Support",
@@ -28,55 +24,11 @@ if not st.session_state.get("_page_title_set"):
     )
     st.session_state["_page_title_set"] = True
 
-# -----------------------------
-# 常量
-# -----------------------------
-RAG_PAGE_INTRODCCTION = "你好，我是智能客服助手，请问有什么可以帮助你的吗？"
 
-RAG_ROUTING_SYSTEM_PROMPT = (
-    "当有检索工具可用时，必须先调用检索工具，仅依据命中内容作答；"
-    "若工具无命中（返回空），再以专业客服口吻给出通用、稳妥建议。"
-    "不编造内部数据/价格/时效；不确定处需说明并给出下一步。"
-)
 
-# -----------------------------
-# 小工具（JSON / 头像 / KB 列表 / 顶部模型配置）
-# -----------------------------
-def _safe_json_loads(s: str):
-    try:
-        return json.loads(s)
-    except Exception:
-        return s  # 回退为原始文本，避免页面崩溃
 
-def _pick_avatar():
-    """
-    优先选你的彩色小图标；若不存在则回退。支持常见路径。
-    """
-    candidates = [
-        "small_logo.png",
-        "img/small_logo.png",
-        "large_logo.png",
-        "img/large_logo.png",
-        "chatchat_avatar.png",
-        "img/chatchat_avatar.png",
-    ]
-    for name in candidates:
-        try:
-            avatar = get_img_base64(name)
-            if avatar:  # 只要拿到了就用
-                return avatar
-        except Exception:
-            pass
-    return "🤖"
-
-_ASSISTANT_AVATAR = _pick_avatar()
 
 def _list_all_kbs():
-    """
-    合并两处来源的知识库名称：
-    1) utils.get_kb_names()（通常扫描项目根的 kb/）
-    2) 项目根目录下的 knowledge_bases/ 子目录（行业知识库页面创建）
-    """
     names = set()
 
     # 来源 1
@@ -119,9 +71,7 @@ def _cfg_label() -> str:
     h = st.session_state.get("cfg_hist_len", 5)
     return f"{m}"
 
-# -----------------------------
-# LangGraph 相关
-# -----------------------------
+
 def get_rag_graph(platform, model, temperature, selected_kbs, KBS):
     tools = [KBS[k] for k in selected_kbs] if selected_kbs else []
     tool_node = ToolNode(tools) if tools else None
@@ -174,7 +124,7 @@ def graph_response(graph, input_messages):
                     "_knoeledge_base_tool", ""
                 ) or "知识库"
                 st.write("已调用", kb_name, "进行查询")
-                content = _safe_json_loads(getattr(msg, "content", ""))
+                content = json.loads(getattr(msg, "content", ""))
                 st.write("知识库检索结果：")
                 st.code(
                     content if isinstance(content, str) else json.dumps(content, ensure_ascii=False, indent=2),
@@ -206,7 +156,7 @@ def display_chat_history():
     for message in st.session_state["rag_chat_history_with_too_call"]:
         with st.chat_message(
             message["role"],
-            avatar=_ASSISTANT_AVATAR if message["role"] == "assistant" else None,
+            avatar=get_img_base64("img/small_logo.png") if message["role"] == "assistant" else None,
         ):
             # 展示工具检索状态（如果有）
             if "tool_calls" in message:
@@ -334,7 +284,7 @@ def rag_chat_page():
             KBS=KBS,
         )
 
-        with st.chat_message("assistant", avatar=_ASSISTANT_AVATAR):
+        with st.chat_message("assistant", avatar=get_img_base64("img/small_logo.png")):
             assistant_text = st.write_stream(stream_response)
 
         # 把最终回答写回会话（用于刷新回显）

@@ -1,4 +1,3 @@
-# pages/knowledge_base_pase.py
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -7,11 +6,10 @@ import json
 import shutil
 from pathlib import Path
 from datetime import datetime
-
 import streamlit as st
-from utils import get_kb_names  # 若不可用会回退到目录扫描
+from utils import get_kb_names
 
-import streamlit as st
+
 if not st.session_state.get("_page_title_set"):
     st.set_page_config(
         page_title="RAG Desk · AI Customer Support",
@@ -121,10 +119,6 @@ def _split_texts(texts, metas, chunk_size=DEFAULT_CHUNK_SIZE, chunk_overlap=DEFA
     return chunk_texts, chunk_metas
 
 def _get_embeddings_openai(model_name: str):
-    """
-    仅使用 OpenAI Embeddings。
-    需要：pip install langchain-openai 且设置 OPENAI_API_KEY
-    """
     try:
         from langchain_openai import OpenAIEmbeddings
     except Exception as e:
@@ -134,9 +128,6 @@ def _get_embeddings_openai(model_name: str):
     return OpenAIEmbeddings(model=model_name)
 
 def _build_chroma(texts, metas, persist_dir: Path, embeddings):
-    """
-    Chroma 0.4.x+ 自动持久化：传入 persist_directory 即可，无需手动 persist()
-    """
     try:
         from langchain_community.vectorstores import Chroma
     except Exception as e:
@@ -161,10 +152,10 @@ def _list_existing_kbs():
             return sorted(set(_slugify(n) for n in names))
     except Exception:
         pass
-    # 回退到目录扫描
     if KB_ROOT.exists():
         return sorted([p.name for p in KB_ROOT.iterdir() if p.is_dir()])
     return []
+
 
 def _load_meta(kb_dir: Path) -> dict:
     meta_path = kb_dir / "meta.json"
@@ -180,14 +171,11 @@ def _save_meta(kb_dir: Path, meta: dict):
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-# =============== 页面渲染 ===============
 def knowledge_base_page():
     st.title("行业知识库")
     st.caption("上传文档，构建向量库，用于对话检索（RAG）")
 
     _ensure_dirs(KB_ROOT)
-
-    # --- ① 创建新的知识库 ---
     st.subheader("① 创建新的知识库")
     with st.form("create_kb_form", clear_on_submit=False):
         kb_name_input = st.text_input("知识库名称（将转为小写 slug）", placeholder="例如：banking_faq")
@@ -199,7 +187,6 @@ def knowledge_base_page():
             help="支持 .txt, .md, .pdf, .docx",
         )
 
-        # —— OpenAI Embedding 模型：下拉选择 + 自定义 ——
         label_list = [x[0] for x in PRESET_OPENAI_EMBED_MODELS]
         choice = st.selectbox("选择 OpenAI Embeddings 模型", label_list, index=0)
         mapped = dict(PRESET_OPENAI_EMBED_MODELS)[choice]
@@ -386,6 +373,6 @@ def knowledge_base_page():
             except Exception as e:
                 st.error(f"删除失败：{e}")
 
-# 仅当作为页面运行时才渲染；被 import（如 rag.py 取 __file__）时不执行
+# 仅当作为页面运行时才渲染；被 import（如 app.py 取 __file__）时不执行
 if __name__ == "__main__":
     knowledge_base_page()
