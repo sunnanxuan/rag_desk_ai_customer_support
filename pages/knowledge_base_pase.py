@@ -1,13 +1,11 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-import os
 import json
 import shutil
 from datetime import datetime
 import streamlit as st
 from utils import *
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 import re
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
@@ -23,8 +21,6 @@ if not st.session_state.get("_page_title_set"):
 
 
 
-DEFAULT_CHUNK_SIZE = 1200
-DEFAULT_CHUNK_OVERLAP = 200
 
 KB_ROOT = Path("kb")
 
@@ -58,18 +54,6 @@ def _save_uploaded_files(files, dest_dir: Path):
 
 
 
-def _split_texts(texts, metas, chunk_size=DEFAULT_CHUNK_SIZE, chunk_overlap=DEFAULT_CHUNK_OVERLAP):
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=int(chunk_size),
-        chunk_overlap=int(chunk_overlap),
-        separators=["\n\n", "\n", "。", "！", "？", "，", " ", ""],
-    )
-    chunk_texts, chunk_metas = [], []
-    for t, m in zip(texts, metas):
-        chunks = splitter.split_text(t)
-        chunk_texts.extend(chunks)
-        chunk_metas.extend([m] * len(chunks))
-    return chunk_texts, chunk_metas
 
 def _get_embeddings_openai(model_name: str):
     return OpenAIEmbeddings(model=model_name)
@@ -181,11 +165,7 @@ def knowledge_base_page():
                 s.update(label="未能从文件中读取到文本内容。", state="error")
                 st.stop()
             # 使用固定的切分参数
-            chunk_texts, chunk_metas = _split_texts(
-                texts, metas,
-                chunk_size=DEFAULT_CHUNK_SIZE,
-                chunk_overlap=DEFAULT_CHUNK_OVERLAP,
-            )
+            chunk_texts, chunk_metas = split_texts(texts, metas)
             s.update(label=f"已切分为 {len(chunk_texts)} 个片段", expanded=False)
 
         with st.status("正在创建向量库（Chroma）…", expanded=False) as s:
@@ -209,8 +189,8 @@ def knowledge_base_page():
             "num_files": len(saved_paths),
             "num_chunks": len(chunk_texts),
             # 固定的切分参数写入 meta（仅信息展示，不在 UI 暴露）
-            "chunk_size": int(DEFAULT_CHUNK_SIZE),
-            "chunk_overlap": int(DEFAULT_CHUNK_OVERLAP),
+            "chunk_size": os.getenv("DEFAULT_CHUNK_SIZE"),
+            "chunk_overlap": os.getenv("DEFAULT_CHUNK_OVERLAP"),
             "embedding_backend": "OpenAI",
             "embedding_model": model_name,
             "persist_directory": str(vectorstore_dir),            # [CHANGED]
@@ -274,11 +254,7 @@ def knowledge_base_page():
                         st.stop()
 
                     # 仍然使用固定的切分参数
-                    chunk_texts, chunk_metas = _split_texts(
-                        texts, metas,
-                        chunk_size=DEFAULT_CHUNK_SIZE,
-                        chunk_overlap=DEFAULT_CHUNK_OVERLAP,
-                    )
+                    chunk_texts, chunk_metas = split_texts(texts, metas)
 
                     model_name_saved = meta.get("embedding_model", "text-embedding-3-small")
 
@@ -298,8 +274,8 @@ def knowledge_base_page():
                     "updated_at": datetime.now().isoformat(timespec="seconds"),
                     "persist_directory": str(vectorstore_dir),    # [CHANGED]
                     # 确保 meta 中反映固定参数
-                    "chunk_size": int(DEFAULT_CHUNK_SIZE),
-                    "chunk_overlap": int(DEFAULT_CHUNK_OVERLAP),
+                    "chunk_size": os.getenv("DEFAULT_CHUNK_SIZE"),
+                    "chunk_overlap": os.getenv("DEFAULT_CHUNK_OVERLAP"),
                     "embedding_backend": "OpenAI",
                 })
                 _save_meta(kb_dir, meta)

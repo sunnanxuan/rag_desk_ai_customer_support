@@ -8,6 +8,8 @@ from pypdf import PdfReader
 import docx
 from pathlib import Path
 from typing import Iterable, Callable, Tuple, List, Dict, Optional
+import os
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 
@@ -113,3 +115,22 @@ def load_texts(paths: Iterable[str | Path],warn: Optional[Callable[[str], None]]
             metas.append({"source": str(p), "filename": p.name, "ext": ext})
 
     return docs, metas
+
+
+
+
+
+
+
+def split_texts(texts, metas):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=int(os.getenv("DEFAULT_CHUNK_SIZE")),
+        chunk_overlap=int(os.getenv("DEFAULT_CHUNK_OVERLAP")),
+        separators=["\n\n", "\n", "。", "！", "？", "，", " ", ""],
+    )
+    chunk_texts, chunk_metas = [], []
+    for t, m in zip(texts, metas):
+        chunks = splitter.split_text(t)
+        chunk_texts.extend(chunks)
+        chunk_metas.extend([m] * len(chunks))
+    return chunk_texts, chunk_metas
